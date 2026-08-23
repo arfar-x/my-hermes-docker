@@ -1,10 +1,15 @@
-.PHONY: up down build cli dashboard logs restart status doctor skill-add skill-list skill-update alias-install alias-remove
+.PHONY: up down build cli dashboard logs restart status doctor skill-add skill-list skill-update alias-install alias-remove scrub-skill-venvs
 
 # Host path for HERMES_HOME_DIR, with ${HOME} etc. resolved from .env — this is
 # what's bind-mounted into the container as /opt/data. `npx skills` needs it fed
 # in via HERMES_HOME, otherwise it defaults to ~/.hermes, which the sandboxed
 # Hermes never reads (see README: "Installing skills from the host").
 HERMES_HOME_HOST := $(shell v=$$(grep -E '^HERMES_HOME_DIR=' .env 2>/dev/null | tail -1 | cut -d= -f2-); if [ -n "$$v" ]; then eval echo "$$v"; else echo "$$HOME/hermes-home"; fi)
+
+# Resolved host paths for the two optional external skill dirs, if set (see
+# README -> "Mounting your own skills directory"). Empty if unset.
+HERMES_EXTERNAL_SKILLS_HOST := $(shell v=$$(grep -E '^HERMES_EXTERNAL_SKILLS_DIR=' .env 2>/dev/null | tail -1 | cut -d= -f2-); [ -n "$$v" ] && eval echo "$$v")
+HERMES_AGENTS_SKILLS_HOST   := $(shell v=$$(grep -E '^HERMES_AGENTS_SKILLS_DIR=' .env 2>/dev/null | tail -1 | cut -d= -f2-); [ -n "$$v" ] && eval echo "$$v")
 
 ALIAS_BEGIN := \# >>> hermes-docker alias >>>
 ALIAS_END   := \# <<< hermes-docker alias <<<
@@ -22,12 +27,31 @@ ifneq ($(strip $(shell grep -E '^HERMES_AGENTS_SKILLS_DIR=' .env 2>/dev/null | c
 COMPOSE_FILES += -f compose.agents-skills.yml
 endif
 
-## Start the gateway (dashboard + keeps container warm for `make cli`), and
-## make sure the `hermes` shell alias is set up. Never touches HERMES_HOME_DIR
-## or HERMES_PROJECT_DIR — nothing here can lose data.
+## Start the gateway (dashboard + keeps container warm for `make cli`), scrub
+## stray venvs from any configured external skill dirs, and make sure the
+## `hermes` shell alias is set up. Never touches HERMES_HOME_DIR or
+## HERMES_PROJECT_DIR — nothing here can lose data.
 up:
+	@$(MAKE) --no-print-directory scrub-skill-venvs
 	docker compose $(COMPOSE_FILES) up -d
 	@$(MAKE) --no-print-directory alias-install
+
+## Remove stray .venv/venv directories from configured external skill dirs
+## before starting. These mount read-only at /skills-src[-agents], so a local
+## dev venv left inside one makes Hermes find it, try `pip install` into it
+## per SKILL.md's usual setup instructions, hit "Read-only file system", and
+## thrash inventing workarounds instead of just using the container's own
+## Python (which already has what these skills need — see Dockerfile). A
+## venv is always regenerable build output, never skill content, so this is
+## safe to delete unconditionally. Runs automatically from `make up`.
+scrub-skill-venvs:
+	@for dir in "$(HERMES_EXTERNAL_SKILLS_HOST)" "$(HERMES_AGENTS_SKILLS_HOST)"; do \
+		[ -n "$$dir" ] && [ -d "$$dir" ] || continue; \
+		find "$$dir" -mindepth 1 -maxdepth 3 \( -iname '.venv' -o -iname 'venv' \) -type d 2>/dev/null | while read -r v; do \
+			echo "[hermes-docker] removing stray venv (would break the read-only skills mount): $$v"; \
+			rm -rf "$$v"; \
+		done; \
+	done
 
 ## Rebuild the local image after editing Dockerfile (e.g. adding a Python
 ## dependency for an external skill). `make up` reuses the existing image

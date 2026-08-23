@@ -214,6 +214,19 @@ then `make build` to rebuild and restart. Check what's already there first
 "import some_package"`) — common ones like `requests`/`urllib3` already ship
 with the base image.
 
+**Keep local dev venvs out of these directories entirely.** If a skill folder
+has its own `.venv`/`venv` from local development (common if a skill's own
+docs say "first-time setup: `pip install -r requirements.txt`"), it mounts
+straight into the read-only skill source too — Hermes finds it, tries to
+`pip install` into it per the skill's own setup instructions, hits
+`Read-only file system`, and improvises broken workarounds instead of just
+using the container's own Python. `make up` scrubs any `.venv`/`venv`
+directory it finds inside `HERMES_EXTERNAL_SKILLS_DIR`/
+`HERMES_AGENTS_SKILLS_DIR` before starting, precisely so this can't happen —
+but it's a symptom worth recognizing on sight (an agent inventing venvs,
+copying tool files to `/workspace`, and still failing) in case you ever
+bypass `make` and run `docker compose` directly.
+
 Verify any of this with `docker compose exec -u hermes hermes hermes skills
 list` — your skills show up with `Source: local`, alongside anything
 installed via `npx skills` or `hermes skills install`.
