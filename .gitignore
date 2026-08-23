@@ -1,0 +1,18 @@
+# Secrets — never commit real credentials. .env.example is the template.
+.env
+
+# The one directory Hermes can read/write — task-specific scratch content
+# (and anything Hermes creates in there, e.g. venvs), not part of this repo.
+/project/
+
+# Python cruft, in case anything ever runs at the repo root
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

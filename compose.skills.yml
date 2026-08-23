@@ -1,0 +1,9 @@
+# Optional fragment: mounts your own skills repo read-only. Merged in by
+# `make` only when HERMES_EXTERNAL_SKILLS_DIR is set in .env — see README ->
+# "Mounting your own skills directory". Not merged automatically by plain
+# `docker compose up`; use `make up`/`make down`/etc., or pass
+# `-f compose.yml -f compose.skills.yml` yourself.
+services:
+  hermes:
+    volumes:
+      - ${HERMES_EXTERNAL_SKILLS_DIR}:/skills-src:ro

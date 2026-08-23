@@ -1,0 +1,9 @@
+# Optional fragment: mounts the skills-cli (`npx skills`) canonical global
+# store read-only, so anything installed with `npx skills add <repo> -g`
+# for ANY agent shows up in Hermes too. Merged in by `make` only when
+# HERMES_AGENTS_SKILLS_DIR is set in .env — see README -> "Mounting your own
+# skills directory".
+services:
+  hermes:
+    volumes:
+      - ${HERMES_AGENTS_SKILLS_DIR}:/skills-src-agents:ro

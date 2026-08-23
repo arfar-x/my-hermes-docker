@@ -1,0 +1,83 @@
+services:
+  hermes:
+    # Built locally from ./Dockerfile (extends nousresearch/hermes-agent with
+    # extra Python deps for external skills — see Dockerfile). `docker compose
+    # up`/`make up` reuses the image if already built; run `make build` after
+    # editing the Dockerfile.
+    build: .
+    image: hermes-docker/hermes:local
+    container_name: hermes
+    # Keeps the gateway (dashboard) and CLI available at any time via
+    # `docker compose exec`. Flip to "no" if you only ever want one-off
+    # `docker compose run` sessions instead of a standing container.
+    restart: unless-stopped
+
+    # Starts the gateway, which serves the dashboard and keeps the agent
+    # warm for `docker compose exec hermes hermes` CLI sessions.
+    command: gateway run
+
+    # The image MUST start as root (its default) — s6-overlay's bootstrap
+    # (UID/GID remap, data-volume chown, config seeding) needs root and
+    # explicitly refuses to run under `docker run/compose --user <uid>`.
+    # It drops privileges internally (s6-setuidgid) to its own "hermes"
+    # user *after* remapping that user's UID/GID to HERMES_UID/HERMES_GID
+    # below — that's how files land owned by you instead of root.
+    working_dir: /workspace
+
+    env_file:
+      - .env
+
+    environment:
+      # Remaps the image's internal "hermes" user to your host uid:gid so
+      # anything written into the bind mounts is owned by you, not root.
+      HERMES_UID: "${UID:-1000}"
+      HERMES_GID: "${GID:-1000}"
+
+    # ONLY these two paths exist for the container. No host home directory, no
+    # other project, nothing else mounted in. Both are configurable via .env
+    # so you can point at different folders per-run without editing this file.
+    # Optional extra skill-source mounts live in compose.skills.yml /
+    # compose.agents-skills.yml — see README → "Mounting your own skills
+    # directory" — merged in by `make` only when their env var is actually set.
+    volumes:
+      - ${HERMES_PROJECT_DIR:-./project}:/workspace     # the ONE directory Hermes may read/write
+      - ${HERMES_HOME_DIR:-./hermes-home}:/opt/data      # Hermes' own config/sessions/keys — the image's real HERMES_HOME (isolated copy, not your real ~/.hermes)
+
+    # Dashboard port. Bound to 127.0.0.1 only — reachable from your
+    # laptop's browser, not your LAN or the open internet.
+    ports:
+      - "127.0.0.1:8642:8642"
+
+    # --- hardening ---
+    # Full `cap_drop: ALL` + `read_only: true` was the original intent, but
+    # this image's boot sequence needs both a writable rootfs and specific
+    # capabilities while it's still root (before it drops to the remapped
+    # "hermes" user), so those two are relaxed to what's actually required:
+    #   - SETUID/SETGID: s6-setuidgid dropping root -> hermes
+    #   - CHOWN/FOWNER/DAC_OVERRIDE: stage2-hook.sh chowning HERMES_HOME
+    #     subdirs and rewriting /etc/passwd,/etc/group for the UID remap
+    # The container filesystem boundary (the two bind mounts below — that's
+    # the ONLY host data it can reach) plus network isolation are what
+    # actually enforce the sandbox for this image, not a read-only rootfs.
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 2
+
+    networks:
+      - hermes-net
+
+networks:
+  hermes-net:
+    driver: bridge
