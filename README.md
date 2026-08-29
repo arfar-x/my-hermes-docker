@@ -29,9 +29,10 @@ later — see [Sandbox policy actually enforced](#sandbox-policy-actually-enforc
 mkdir -p "${HERMES_PROJECT_DIR:-project}" "${HERMES_HOME_DIR:-$HOME/.hermes}"
 ```
 
-(Skip `HERMES_EXTERNAL_SKILLS_DIR`/`HERMES_AGENTS_SKILLS_DIR` here — they're
-optional and only need a folder to exist if you actually set them; see
-[Mounting your own skills directory](#mounting-your-own-skills-directory).)
+(Skip `HERMES_EXTERNAL_SKILLS_DIR`/`HERMES_AGENTS_SKILLS_DIR`/
+`HERMES_WORKSPACE_DIR_RO`/`HERMES_WORKSPACE_DIR_RW` here — they're all optional and
+only need a folder to exist if you actually set them; see
+[Mounting your own skills and code](#mounting-your-own-skills-and-code).)
 
 Start it:
 
@@ -41,7 +42,7 @@ make up
 
 First `make up` builds the local image (`Dockerfile` extends
 `nousresearch/hermes-agent` with a couple of Python packages needed by
-skills — see [Mounting your own skills directory](#mounting-your-own-skills-directory)),
+skills — see [Mounting your own skills and code](#mounting-your-own-skills-and-code)),
 then starts it. After that it walks you through Hermes' own setup wizard on
 first CLI attach. Config is written into `HERMES_HOME_DIR` (a bind mount),
 so it persists across restarts and image updates.
@@ -55,8 +56,10 @@ Everything lives in `.env` (see `.env.example` for the annotated template):
 | `UID` / `GID` | `1000` / `1000` | Host uid:gid the container's internal `hermes` user is remapped to, so files it writes land owned by you |
 | `HERMES_PROJECT_DIR` | `./project` | The one folder Hermes can read/write — its `/workspace`. Point it at a fresh folder per task for clean separation |
 | `HERMES_HOME_DIR` | `${HOME}/.hermes` | Hermes' config/session/auth/skills state — its `/opt/data`. Conventional path, see [Native vs. Dockerized Hermes](#native-vs-dockerized-hermes) for the tradeoff it accepts |
-| `HERMES_EXTERNAL_SKILLS_DIR` | unset (mount not created) | Your own skill sources, mounted **read-only** at `/skills-src`. See [Mounting your own skills directory](#mounting-your-own-skills-directory) |
-| `HERMES_AGENTS_SKILLS_DIR` | unset (mount not created) | The `npx skills` canonical global store, mounted **read-only** at `/skills-src-agents`. See [Mounting your own skills directory](#mounting-your-own-skills-directory) |
+| `HERMES_EXTERNAL_SKILLS_DIR` | unset (mount not created) | Your own skill sources, mounted **read-only** at `/skills-src`. See [Mounting your own skills and code](#mounting-your-own-skills-and-code) |
+| `HERMES_AGENTS_SKILLS_DIR` | unset (mount not created) | The `npx skills` canonical global store, mounted **read-only** at `/skills-src-agents`. See [Mounting your own skills and code](#mounting-your-own-skills-and-code) |
+| `HERMES_WORKSPACE_DIR_RO` | unset (mount not created) | Your own code, mounted **read-only** at `/workspace/Programming/company-ro`. See [Mounting your own skills and code](#mounting-your-own-skills-and-code) |
+| `HERMES_WORKSPACE_DIR_RW` | unset (mount not created) | Your own code, mounted **read-write** at `/workspace/Programming/company-rw` — Hermes can modify/commit/push here. See [Mounting your own skills and code](#mounting-your-own-skills-and-code) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … | unset | Provider credentials, referenced by `config.yaml` |
 | `HERMES_DASHBOARD*` | off | Web dashboard — off by default, fails closed without a password |
 | `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, … | unset | Third-party integration tokens — only add what you use |
@@ -150,15 +153,21 @@ skills list` on the host.
 Hermes also ships its own skill manager (`hermes skills`, plus `hermes sync`
 for cross-device/team sync) if you'd rather not involve `npx` at all.
 
-## Mounting your own skills directory
+## Mounting your own skills and code
 
-Two more bind mounts, both **genuinely optional** and both **read-only**:
-unset, they add nothing to the container at all — no placeholder, no empty
-folder, the sandbox stays at exactly the two mounts in
-[Configuration](#configuration). Set the matching `.env` var and `make`
-merges in the extra fragment automatically (`compose.skills.yml` /
-`compose.agents-skills.yml`); plain `docker compose up` without `make`
-ignores them.
+Four more bind mounts, all **genuinely optional**: unset, they add nothing
+to the container at all — no placeholder, no empty folder, the sandbox
+stays at exactly the two mounts in [Configuration](#configuration). Set the
+matching `.env` var and `make` merges in the extra fragment automatically
+(`compose.skills.yml` / `compose.agents-skills.yml` / `compose.workspace-ro.yml`
+/ `compose.workspace-rw.yml`); plain `docker compose up` without `make` ignores
+them.
+
+Three of the four are always read-only. The fourth — `HERMES_WORKSPACE_DIR_RW`,
+below — is not, on purpose: it's a genuinely different risk level, not a
+variant of the others, so it gets its own explicit opt-in rather than a flag
+on a shared one. Decide per repo which of the two code mounts it belongs
+under; don't default to the writable one "just in case."
 
 **Your own skills repo** — `HERMES_EXTERNAL_SKILLS_DIR`, mounted at
 `/skills-src`:
@@ -186,9 +195,42 @@ it and anything you `npx skills add <repo> -g` for *any* agent on this host
 — Claude Code, Cursor, whatever — shows up in Hermes too, no per-agent
 install needed.
 
-Either way, `make up` recreates the container with the new mount(s), and you
-need to tell `config.yaml` where to look — add whichever paths you've
-actually mounted to `skills.external_dirs`:
+**Your own code — two distinct mounts, by risk level.** Neither is wired
+into `config.yaml`; both are just plain files Hermes can read/browse/`git
+log`/`git diff` in its normal working directory. Both are nested *inside*
+the workspace, not a separate top-level path, and the risk is visible
+directly in the path — `-ro` vs. `-rw` — rather than hidden in a flag:
+
+```bash
+# Hermes can inspect and git-log here, but never modify, commit, or push.
+HERMES_WORKSPACE_DIR_RO=/path/to/your/code    # -> /workspace/Programming/company-ro
+
+# Hermes can edit files, commit, run any git command that changes state.
+# Only point this at something you're genuinely fine with it modifying.
+HERMES_WORKSPACE_DIR_RW=/path/to/your/code    # -> /workspace/Programming/company-rw
+```
+
+They're independent — set one, both, or neither, and put different repos
+under each depending on how much you trust Hermes with them. If you keep
+shortcuts to individual repos inside `HERMES_PROJECT_DIR` (e.g.
+`Programming/datami-backend`), point them at whichever mount applies with a
+*relative* symlink from inside `Programming/`:
+
+```bash
+cd "$HERMES_PROJECT_DIR/Programming" && ln -s company-ro/datami-backend datami-backend
+```
+
+One easy way to break this: an absolute symlink, or a relative one with the
+wrong number of path segments, resolves differently on the host than inside
+the container (nested mounts are container-only — the host's own
+`Programming/company-ro/` stays empty on disk, populated only inside the
+container's mount namespace). Check with `docker compose exec -u hermes
+hermes sh -c "ls -L /workspace/Programming/<name>"`, not a host-side `ls`.
+
+`make up` recreates the container with whichever new mount(s) you've set.
+For the two skill mounts specifically, you also need to tell `config.yaml`
+where to look — add whichever paths you've actually mounted to
+`skills.external_dirs`:
 
 ```yaml
 skills:
@@ -324,8 +366,8 @@ version doesn't allow. What's actually applied, verified working:
   merged in are visible: `HERMES_PROJECT_DIR` → `/workspace` and
   `HERMES_HOME_DIR` → `/opt/data` always; `HERMES_EXTERNAL_SKILLS_DIR` →
   `/skills-src` and `HERMES_AGENTS_SKILLS_DIR` → `/skills-src-agents`, both
-  read-only, only if you've set them (see [Mounting your own skills
-  directory](#mounting-your-own-skills-directory)) — nothing else, so there
+  read-only, only if you've set them (see [Mounting your own skills and
+  code](#mounting-your-own-skills-and-code)) — nothing else, so there
   is no host path for Hermes to reach beyond those. Verified with `docker
   compose exec hermes sh -c "ls / && ls /workspace/.."` — no host filesystem
   visible outside the mounted paths.
@@ -415,10 +457,11 @@ docker compose exec hermes sh -c "ls / && ls /workspace/.. 2>&1"
 You should see a normal container filesystem with `/workspace` and
 `/opt/data` (Hermes' actual `HERMES_HOME` — see [How the image actually
 boots](#how-the-image-actually-boots)), plus `/skills-src` and/or
-`/skills-src-agents` only if you set the matching env var (see [Mounting
-your own skills directory](#mounting-your-own-skills-directory)) — nothing
-else reachable above `/workspace`. If either skills mount is present,
-confirm it's actually read-only: `docker compose exec hermes sh -c "touch
+`/skills-src-agents` only if you set the matching env var, and
+`/workspace/Programming/company-ro`/`-rw` likewise (see [Mounting your own
+skills and code](#mounting-your-own-skills-and-code)) — nothing else
+reachable above `/workspace`. If a read-only mount is present, confirm it's
+actually read-only: `docker compose exec hermes sh -c "touch
 /skills-src/x"` should fail with `Read-only file system`.
 
 Then confirm the agent itself — not just an ad-hoc root shell — runs

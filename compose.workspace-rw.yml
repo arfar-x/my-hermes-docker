@@ -1,0 +1,9 @@
+# Optional fragment: mounts HERMES_WORKSPACE_DIR_RW read-write, nested inside the
+# workspace at /workspace/Programming/company-rw. No :ro here on purpose —
+# Hermes can edit, commit, and push in whatever lands under this one. Merged
+# in by `make` only when the var is set in .env — see README -> "Mounting
+# your own skills directory".
+services:
+  hermes:
+    volumes:
+      - ${HERMES_WORKSPACE_DIR_RW}:/workspace/Programming/company-rw

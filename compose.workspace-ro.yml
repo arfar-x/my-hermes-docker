@@ -1,0 +1,8 @@
+# Optional fragment: mounts HERMES_WORKSPACE_DIR_RO read-only, nested inside the
+# workspace at /workspace/Programming/company-ro (not a separate top-level
+# path). Merged in by `make` only when the var is set in .env — see
+# README -> "Mounting your own skills directory".
+services:
+  hermes:
+    volumes:
+      - ${HERMES_WORKSPACE_DIR_RO}:/workspace/Programming/company-ro:ro

@@ -26,6 +26,12 @@ endif
 ifneq ($(strip $(shell grep -E '^HERMES_AGENTS_SKILLS_DIR=' .env 2>/dev/null | cut -d= -f2-)),)
 COMPOSE_FILES += -f compose.agents-skills.yml
 endif
+ifneq ($(strip $(shell grep -E '^HERMES_WORKSPACE_DIR_RO=' .env 2>/dev/null | cut -d= -f2-)),)
+COMPOSE_FILES += -f compose.workspace-ro.yml
+endif
+ifneq ($(strip $(shell grep -E '^HERMES_WORKSPACE_DIR_RW=' .env 2>/dev/null | cut -d= -f2-)),)
+COMPOSE_FILES += -f compose.workspace-rw.yml
+endif
 
 ## Start the gateway (dashboard + keeps container warm for `make cli`), scrub
 ## stray venvs from any configured external skill dirs, and make sure the

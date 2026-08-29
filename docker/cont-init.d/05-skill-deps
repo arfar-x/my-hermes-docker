@@ -1,0 +1,23 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Auto-installs every mounted skill's Python dependencies into Hermes' venv
+# at container start, so adding a skill never requires a Dockerfile edit.
+#
+# Why this exists: /skills-src and /skills-src-agents (see compose.skills.yml
+# / compose.agents-skills.yml) are mounted read-only by design, and the base
+# image's venv ships with no pip — only uv. A skill's own requirements.txt
+# can't be installed into its own read-only mount, so we install straight
+# into the venv instead, same as the base image's own boot steps.
+#
+# This is a standard s6-overlay v3 "legacy cont-init" hook: /etc/cont-init.d
+# is a documented compat extension point, run in lexicographic order, as
+# root, before any s6-rc service (dashboard, main-hermes) starts. See the
+# image's own 01-hermes-setup/02-reconcile-profiles for the same convention.
+set -e
+
+for req in /skills-src/*/requirements.txt /skills-src-agents/*/requirements.txt; do
+    [ -f "$req" ] || continue
+    echo "[skill-deps] installing $req"
+    uv pip install --python /opt/hermes/.venv/bin/python3 -r "$req"
+done

@@ -32,6 +32,10 @@ services:
       # anything written into the bind mounts is owned by you, not root.
       HERMES_UID: "${UID:-1000}"
       HERMES_GID: "${GID:-1000}"
+      # Container defaults to UTC otherwise — set to your host's zone (e.g.
+      # `timedatectl` or `cat /etc/timezone`) so timestamps in logs, cron
+      # schedules, and Hermes' own session history match your local time.
+      TZ: "${TZ:-UTC}"
 
     # ONLY these two paths exist for the container. No host home directory, no
     # other project, nothing else mounted in. Both are configurable via .env
