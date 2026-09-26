@@ -9,3 +9,13 @@ FROM nousresearch/hermes-agent:latest
 # See that file for the full explanation.
 COPY docker/cont-init.d/05-skill-deps /etc/cont-init.d/05-skill-deps
 RUN chmod +x /etc/cont-init.d/05-skill-deps
+
+# Claude Code CLI — `hermes model` -> "Claude Pro/Max subscription (OAuth)"
+# shells out to `claude setup-token`, so subscription auth (no API key)
+# needs the real binary on PATH. Its login state lands in ~/.claude, i.e.
+# /opt/data/.claude on the persistent HERMES_HOME volume.
+RUN npm install -g @anthropic-ai/claude-code && claude --version
+
+# Codex CLI — same idea for ChatGPT-subscription auth; login state lands in
+# ~/.codex, i.e. /opt/data/.codex on the persistent HERMES_HOME volume.
+RUN npm install -g @openai/codex && codex --version

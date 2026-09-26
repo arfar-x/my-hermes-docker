@@ -79,6 +79,19 @@ services:
     mem_limit: 4g
     cpus: 2
 
+    # Pinned hostname -> IP mapping for the model endpoint, from
+    # MODEL_HOSTNAME / MODEL_HOST_IP in .env. Needed when that host doesn't
+    # resolve from this box the way the model endpoint needs (bypasses
+    # whatever DNS answer this network would otherwise give the container).
+    # If you don't use the MODEL_* vars, comment out BOTH the vars in .env
+    # AND that entry — compose rejects an extra_hosts entry with blank values.
+    extra_hosts:
+      # Docker's official way (docs → "Connect the host from a container") to
+      # reach this box itself from inside the container. Mac/Windows get
+      # host.docker.internal for free; Linux requires this manual entry.
+      - "host.docker.internal:host-gateway"
+      - "${MODEL_HOSTNAME}:${MODEL_HOST_IP}"
+
     networks:
       - hermes-net
 
