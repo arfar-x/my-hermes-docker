@@ -1,5 +1,16 @@
 FROM nousresearch/hermes-agent:latest
 
+# Hermes' local terminal backend runs every command in a *login* shell
+# (`bash -l`), and Debian's /etc/profile unconditionally resets PATH for
+# non-root users on login, silently dropping /opt/hermes/.venv/bin (and
+# /opt/hermes/bin) — so skills relying on venv-installed deps (see
+# docker/cont-init.d/05-skill-deps below) fail with the base system Python
+# instead, hitting PEP 668. `docker exec` (no `-l`) never hits this, which
+# is why it's easy to miss testing that way. See docker/profile.d for the
+# full explanation.
+COPY docker/profile.d/10-hermes-path.sh /etc/profile.d/10-hermes-path.sh
+RUN chmod +x /etc/profile.d/10-hermes-path.sh
+
 # Skills mounted read-only via HERMES_EXTERNAL_SKILLS_DIR /
 # HERMES_AGENTS_SKILLS_DIR (see README -> "Mounting your own skills
 # directory") bring their own requirements.txt. Installing those by hand
